@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing GitHub release to attach the RPM to
+        required: true
+        default: v0.2.0
+        type: string
 
 permissions:
   contents: write
@@ -27,21 +34,22 @@ jobs:
             python3-sounddevice \
             rpm-build
       - name: Run tests
-        run: python3 -m unittest discover -s tests
+        run: PYTHONPATH=src python3 -m unittest discover -s tests
       - name: Build RPM
         run: ./scripts/build-rpm.sh
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
         run: |
           rpm="$(find rpmbuild/RPMS -type f -name 'voicemod-for-linux-[0-9]*.rpm' -print -quit)"
           test -n "$rpm"
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "$rpm" \
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$rpm" \
               --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "$rpm" \
+            gh release create "$RELEASE_TAG" "$rpm" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "VoiceFX $GITHUB_REF_NAME" \
+              --title "VoiceFX $RELEASE_TAG" \
               --generate-notes
           fi
