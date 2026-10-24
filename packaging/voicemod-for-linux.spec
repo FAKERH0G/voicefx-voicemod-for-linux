@@ -11,6 +11,7 @@ Requires:       python3
 Requires:       python3-gobject
 Requires:       python3-numpy
 Requires:       python3-sounddevice
+Requires:       portaudio
 Requires:       gtk4
 Requires:       gstreamer1
 Requires:       gstreamer1-plugins-good
