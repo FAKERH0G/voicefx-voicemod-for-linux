@@ -19,6 +19,7 @@ test = []
 
 [project.scripts]
 voicemod-for-linux = "voicemod_for_linux.cli:main"
+voicefx-app = "voicemod_for_linux.gui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

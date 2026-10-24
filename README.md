@@ -1,4 +1,4 @@
-# Voicemod for Linux
+# VoiceFX — Voicemod for Linux
 
 ![VoiceFX icon](assets/voicefx.svg)
 
@@ -6,85 +6,80 @@ An unofficial, independent voice-effects prototype for Fedora Linux. It is not
 a port of Voicemod, does not include Voicemod code or assets, and is not
 affiliated with Voicemod or its owners.
 
-The prototype processes a microphone in real time and sends the result to a
-PipeWire virtual microphone. It currently includes clean, robot, radio, and
-echo effects. It is a small command-line starting point, not a feature-complete
-replacement for Voicemod.
+VoiceFX provides a native GTK desktop app and a command-line processor for
+real-time microphone effects. It includes clean, robot, radio, and echo effects.
+It is an independent early-stage project, not a feature-complete replacement
+for Voicemod.
 
-## Fedora setup
+## Install the Fedora RPM
 
-Install the system audio and Python tools:
+Install the runtime dependencies and the built RPM:
 
 ```sh
-sudo dnf install pipewire pipewire-pulseaudio pipewire-utils portaudio python3 python3-pip
+sudo dnf install ./voicemod-for-linux-0.2.0-1.fc44.noarch.rpm
 ```
 
-Create a virtual output and microphone for this login session:
+For a local build, the package is at
+`rpmbuild/RPMS/noarch/voicemod-for-linux-0.2.0-1.fc44.noarch.rpm`.
+
+The RPM adds **VoiceFX** to the application grid and installs the
+`voicemod-for-linux` command-line tool. It uses Fedora's packaged GTK, Python,
+NumPy, and PortAudio bindings rather than bundling Python dependencies.
+
+## Create a virtual microphone
+
+VoiceFX processes audio from the selected microphone to the selected output.
+To make the processed signal available as a microphone to Discord and other
+apps, create PipeWire virtual devices for the current login:
 
 ```sh
 pactl load-module module-null-sink sink_name=voicechanger_out sink_properties=device.description=VoiceChanger_Output
 pactl load-module module-remap-source source_name=voicechanger_mic master=voicechanger_out.monitor source_properties=device.description=VoiceChanger_Microphone
 ```
 
-Install the app in a virtual environment:
+Start **VoiceFX**, select your physical microphone and **VoiceChanger_Output**,
+choose an effect, and click **Start voice effects**. In Discord or another
+calling app, select **VoiceChanger_Microphone** as its input device.
 
-```sh
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install .
-```
+The devices created with `pactl load-module` last until the audio service
+restarts or their modules are unloaded. To remove them, run
+`pactl unload-module MODULE_ID` with each module ID printed by `pactl`.
 
-List audio devices and note the device IDs:
+## Command line
+
+List audio devices:
 
 ```sh
 voicemod-for-linux --list-devices
 ```
 
-Run the effect with your physical microphone as input and the virtual output as
-output. Replace the IDs with the ones shown on your machine:
+Select devices by ID and start an effect:
 
 ```sh
 voicemod-for-linux --input INPUT_ID --output OUTPUT_ID --effect robot
 ```
 
-Replace `INPUT_ID` and `OUTPUT_ID` with the numeric IDs reported on your
-machine; select the `VoiceChanger_Output` device for output.
-
-In Discord, a game, or another calling app, select **VoiceChanger_Microphone**
-as the microphone. Use `--effect clean`, `robot`, `radio`, or `echo` to choose
-an effect. Press Ctrl+C to stop processing.
-
-The repository includes an original VoiceFX icon at `assets/voicefx.svg` and a
-desktop launcher at `desktop/voicefx.desktop`. To install them for your user:
-
-```sh
-install -Dm644 assets/voicefx.svg ~/.local/share/icons/hicolor/scalable/apps/voicefx.svg
-install -Dm644 desktop/voicefx.desktop ~/.local/share/applications/voicefx.desktop
-```
-
-The launcher uses the default input/output devices; use the terminal command
-above when you need to select device IDs explicitly.
-
-The virtual devices created with `pactl load-module` last until the audio
-service restarts or the modules are unloaded. You can remove them with
-`pactl unload-module MODULE_ID`, using the IDs printed by `pactl`.
+Replace the IDs with those reported on your machine. Effects are `clean`,
+`robot`, `radio`, and `echo`. Press Ctrl+C to stop processing.
 
 ## Requirements and limitations
 
-- Fedora with PipeWire and its PulseAudio compatibility service.
-- Python, NumPy, and PortAudio (provided by the Python dependencies and Fedora
-  packages above).
-- The icon is original project artwork, not Voicemod branding. This prototype
-  has no graphical interface, soundboard, effect editor, or
-  automatic device discovery. Audio routing and device IDs are configured by
-  the user.
+- Fedora Linux with PipeWire and its PulseAudio compatibility service.
+- The app provides a GTK desktop UI, but no soundboard, effect editor, or
+  advanced voice models. The icon is original artwork, not Voicemod branding.
 
 ## Development
 
 ```sh
-python -m pip install -e '.[test]'
-python -m unittest discover -s tests
+sudo dnf install gtk4 pipewire-pulseaudio python3-gobject python3-numpy \
+  python3-sounddevice rpm-build
+python3 -m unittest discover -s tests
+./scripts/build-rpm.sh
 ```
+
+The RPM build script creates a Fedora-native RPM in
+`rpmbuild/RPMS/noarch/`. Tagging a release `v*` also builds and attaches the RPM
+to a GitHub release using the Fedora 44 CI workflow.
 
 ## License
 

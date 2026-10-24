@@ -1,0 +1,47 @@
+name: Build and publish RPM
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  rpm:
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install RPM build and test dependencies
+        run: |
+          dnf install --assumeyes \
+            gh \
+            gtk4 \
+            pipewire-pulseaudio \
+            python3 \
+            python3-devel \
+            python3-gobject \
+            python3-numpy \
+            python3-sounddevice \
+            rpm-build
+      - name: Run tests
+        run: python3 -m unittest discover -s tests
+      - name: Build RPM
+        run: ./scripts/build-rpm.sh
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rpm="$(find rpmbuild/RPMS -type f -name 'voicemod-for-linux-[0-9]*.rpm' -print -quit)"
+          test -n "$rpm"
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$rpm" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$rpm" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "VoiceFX $GITHUB_REF_NAME" \
+              --generate-notes
+          fi

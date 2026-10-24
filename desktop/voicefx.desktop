@@ -1,8 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=VoiceFX
+GenericName=Voice Changer
 Comment=Apply real-time voice effects
-Exec=voicemod-for-linux --effect robot
+Exec=voicefx-app
 Icon=voicefx
-Terminal=true
+Terminal=false
 Categories=AudioVideo;Audio;
+StartupNotify=true

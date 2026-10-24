@@ -1,0 +1,4 @@
+#!/usr/bin/python3
+from voicemod_for_linux.cli import main
+
+raise SystemExit(main())
