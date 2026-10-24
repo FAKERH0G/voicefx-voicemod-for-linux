@@ -21,7 +21,7 @@ Install the currently published Fedora 44 RPM from the
 with DNF. DNF will install the app and resolve its dependencies:
 
 ```sh
-sudo dnf install https://github.com/FAKERH0G/voicemod-for-linux/releases/download/v0.4.0/voicemod-for-linux-0.4.0-1.fc44.noarch.rpm
+sudo dnf install https://github.com/FAKERH0G/voicemod-for-linux/releases/download/v0.6.0/voicemod-for-linux-0.6.0-1.fc44.noarch.rpm
 ```
 
 To try the unreleased changes in this source tree, build the RPM using the
@@ -48,6 +48,11 @@ Either select **VoiceFX_Microphone** in the app's input settings, or use
 **Send VoiceFX to an open call** to route the active app microphone stream.
 VoiceFX restores streams it routed and the previous system default microphone
 when you stop the effects.
+
+Closing the VoiceFX window hides it while audio processing continues in the
+background. Launch VoiceFX again from the application grid to reopen it. Use
+the menu button in the title bar and choose **Quit VoiceFX** to stop the
+background app and clean up its audio routing.
 
 ## Soundboard
 

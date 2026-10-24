@@ -1,5 +1,5 @@
 Name:           voicemod-for-linux
-Version:        0.5.0
+Version:        0.6.0
 Release:        1%{?dist}
 Summary:        Independent real-time voice effects for Fedora
 License:        MIT
@@ -61,5 +61,7 @@ install -Dpm0644 assets/voicefx.svg \
 %{_datadir}/icons/hicolor/scalable/apps/voicefx.svg
 
 %changelog
+* Fri Oct 23 2026 FAKERH0G <236636419+FAKERH0G@users.noreply.github.com> - 0.6.0-1
+- Fix microphone and output backend selection and allow background operation
 * Fri Oct 23 2026 FAKERH0G <236636419+FAKERH0G@users.noreply.github.com> - 0.5.0-1
 - Route active call-app mic streams and decode common audio formats

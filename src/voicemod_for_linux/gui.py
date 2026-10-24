@@ -53,6 +53,59 @@ def _resolve_voicefx_output(
     return virtual_output
 
 
+def _resolve_input_device(input_device: int | None, output_device: int) -> int:
+    devices = sd.query_devices()
+    output = sd.query_devices(output_device, "output")
+    output_hostapi = int(output["hostapi"])
+
+    if input_device is not None:
+        selected = sd.query_devices(input_device, "input")
+        if int(selected["hostapi"]) == output_hostapi:
+            return input_device
+        selected_name = str(selected["name"]).lower()
+    else:
+        selected_name = ""
+
+    compatible = [
+        (index, device)
+        for index, device in enumerate(devices)
+        if device["max_input_channels"] > 0
+        and int(device["hostapi"]) == output_hostapi
+        and not any(
+            marker in str(device["name"]).lower()
+            for marker in ("voicefx", ".monitor", "loopback", "monitor")
+        )
+    ]
+    if not compatible:
+        raise ValueError(
+            "No physical microphone is available through the same audio backend "
+            "as VoiceFX_Output. Check that PipeWire is running and reopen VoiceFX."
+        )
+
+    if selected_name:
+        selected_words = set(selected_name.replace(":", " ").replace("-", " ").split())
+        matches = [
+            (
+                len(
+                    selected_words
+                    & set(
+                        str(device["name"])
+                        .lower()
+                        .replace(":", " ")
+                        .replace("-", " ")
+                        .split()
+                    )
+                ),
+                index,
+            )
+            for index, device in compatible
+        ]
+        score, matching_index = max(matches)
+        if score:
+            return matching_index
+    return compatible[0][0]
+
+
 class VoiceFxWindow(Gtk.ApplicationWindow):
     def __init__(self, application: Gtk.Application) -> None:
         super().__init__(application=application, title="VoiceFX")
@@ -72,6 +125,8 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         self._effect_buttons: dict[str, Gtk.ToggleButton] = {}
         self._sound_rows: Gtk.ListBox | None = None
         self._sound_states: tuple[tuple[str, bool, bool], ...] = ()
+        self._quitting = False
+        self._cleaned_up = False
 
         shell = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         shell.add_css_class("voicefx-window")
@@ -110,7 +165,7 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         sidebar_spacer = Gtk.Box()
         sidebar_spacer.set_vexpand(True)
         sidebar.append(sidebar_spacer)
-        sidebar_note = Gtk.Label(label="Fedora · PipeWire")
+        sidebar_note = Gtk.Label(label="Close to keep running")
         sidebar_note.set_xalign(0)
         sidebar_note.add_css_class("dim-label")
         sidebar.append(sidebar_note)
@@ -121,6 +176,17 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
 
         header = Gtk.HeaderBar()
         header.set_title_widget(Gtk.Label(label="VoiceFX"))
+        menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
+        menu_button.set_tooltip_text("VoiceFX options")
+        menu_button.add_css_class("voicefx-nav")
+        menu = Gtk.Popover()
+        menu_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        quit_button = Gtk.Button(label="Quit VoiceFX")
+        quit_button.connect("clicked", self._quit_app)
+        menu_content.append(quit_button)
+        menu.set_child(menu_content)
+        menu_button.set_popover(menu)
+        header.pack_end(menu_button)
         self.set_titlebar(header)
 
         stack = Gtk.Stack()
@@ -395,6 +461,25 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
                     "PortAudio could not open VoiceFX_Output. Check that PipeWire is running "
                     "and restart VoiceFX."
                 )
+            compatible_input = _resolve_input_device(input_device, output_device)
+            selected_input = sd.query_devices(compatible_input, "input")
+            input_notice = None
+            if input_device != compatible_input:
+                input_notice = (
+                    f"Using {selected_input['name']} with VoiceFX_Output "
+                    "(same audio backend)."
+                )
+                input_index = next(
+                    (
+                        index
+                        for index, (device_id, _) in enumerate(self._inputs)
+                        if device_id == compatible_input
+                    ),
+                    None,
+                )
+                if input_index is not None:
+                    self._input_dropdown.set_selected(input_index)
+            input_device = compatible_input
             output_channels = min(2, int(output_settings["max_output_channels"]))
             effect = next(
                 (
@@ -444,7 +529,12 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
             except RuntimeError as error:
                 monitor_error = str(error)
                 self._monitor_toggle.set_active(False)
-        self._status.set_text(f"Running {effect} effect · select VoiceFX_Microphone in your call app.")
+        status = (
+            f"Running {effect} effect · select VoiceFX_Microphone in your call app."
+        )
+        if input_notice:
+            status = f"{status} {input_notice}"
+        self._status.set_text(status)
         if default_source_error:
             self._status.set_text(
                 f"Voice changer is running, but the default mic could not be switched: {default_source_error}"
@@ -686,6 +776,23 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         self._soundboard.set_looping(name, button.get_active())
 
     def _on_close(self, _window: Gtk.ApplicationWindow) -> bool:
+        if not self._quitting:
+            self.set_visible(False)
+            return True
+        self._cleanup()
+        return False
+
+    def _quit_app(self, _button: Gtk.Button) -> None:
+        self._quitting = True
+        self.close()
+        application = self.get_application()
+        if application is not None:
+            application.quit()
+
+    def _cleanup(self) -> None:
+        if self._cleaned_up:
+            return
+        self._cleaned_up = True
         self._stop_stream()
         errors = self._routing.close()
         if errors:
@@ -693,7 +800,6 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
                 f"Could not clean up PipeWire routing: {'; '.join(errors)}",
                 file=sys.stderr,
             )
-        return False
 
 
 def main() -> int:
@@ -763,6 +869,10 @@ def main() -> int:
             Gtk.StyleContext.add_provider_for_display(
                 display, provider, Gtk.STYLE_PROVIDER_PRIORITY_USER
             )
+        windows = application.get_windows()
+        if windows:
+            windows[0].present()
+            return
         VoiceFxWindow(application).present()
 
     application = Gtk.Application(application_id="io.github.fakerh0g.VoiceFX")
