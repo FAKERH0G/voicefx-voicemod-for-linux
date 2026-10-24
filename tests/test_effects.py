@@ -27,6 +27,15 @@ class EffectProcessorTests(unittest.TestCase):
         output = processor.process(first)
         self.assertGreater(float(output[2, 0]), 0.0)
 
+    def test_robot_effect_is_continuous_across_audio_blocks(self):
+        audio = np.ones((128, 1), dtype=np.float32)
+        whole = EffectProcessor("robot", sample_rate=48000, channels=1).process(audio)
+        processor = EffectProcessor("robot", sample_rate=48000, channels=1)
+        chunks = np.concatenate(
+            [processor.process(audio[:64]), processor.process(audio[64:])]
+        )
+        np.testing.assert_allclose(chunks, whole)
+
     def test_invalid_effect_and_channel_shape_are_rejected(self):
         with self.assertRaises(ValueError):
             EffectProcessor("unknown", 48000, 1)
