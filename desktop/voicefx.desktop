@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=VoiceFX
-GenericName=Voice Changer
-Comment=Apply real-time voice effects
+GenericName=Voice Changer and Soundboard
+Comment=Change your voice and play sounds into calls
 Exec=voicefx-app
 Icon=voicefx
 Terminal=false

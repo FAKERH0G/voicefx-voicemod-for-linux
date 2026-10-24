@@ -36,6 +36,23 @@ class EffectProcessorTests(unittest.TestCase):
         )
         np.testing.assert_allclose(chunks, whole)
 
+    def test_robot_effect_modulates_and_changes_a_voiced_tone(self):
+        sample_rate = 48000
+        time = np.arange(sample_rate // 5, dtype=np.float32) / sample_rate
+        voice = np.sin(2.0 * np.pi * 220.0 * time).astype(np.float32)[:, None]
+        output = EffectProcessor("robot", sample_rate, 1).process(voice)
+        self.assertFalse(np.allclose(output, voice))
+        self.assertGreater(float(np.sqrt(np.mean(output**2))), 0.05)
+
+    def test_effect_can_change_while_stream_is_running(self):
+        processor = EffectProcessor("clean", sample_rate=48000, channels=1)
+        audio = np.ones((128, 1), dtype=np.float32)
+        np.testing.assert_array_equal(processor.process(audio), audio)
+        processor.set_effect("robot")
+        self.assertFalse(np.allclose(processor.process(audio), audio))
+        with self.assertRaises(ValueError):
+            processor.set_effect("unknown")
+
     def test_invalid_effect_and_channel_shape_are_rejected(self):
         with self.assertRaises(ValueError):
             EffectProcessor("unknown", 48000, 1)

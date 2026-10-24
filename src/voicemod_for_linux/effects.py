@@ -20,6 +20,12 @@ class EffectProcessor:
         self._echo = np.zeros((max(1, int(sample_rate * 0.24)), channels), dtype=np.float32)
         self._echo_position = 0
 
+    def set_effect(self, effect: str) -> None:
+        if effect not in EFFECTS:
+            raise ValueError(f"Unknown effect {effect!r}; choose from {', '.join(EFFECTS)}")
+        self.effect = effect
+        self._phase = 0.0
+
     def process(self, audio: np.ndarray) -> np.ndarray:
         if audio.ndim != 2 or audio.shape[1] != self.channels:
             raise ValueError(f"Expected audio with {self.channels} channel(s)")
@@ -29,14 +35,14 @@ class EffectProcessor:
         if self.effect == "robot":
             frames = audio.shape[0]
             phase = self._phase + (
-                2.0 * np.pi * 35.0 * np.arange(frames, dtype=np.float64) / self.sample_rate
+                2.0 * np.pi * 80.0 * np.arange(frames, dtype=np.float64) / self.sample_rate
             )
             carrier = np.sin(phase).astype(np.float32)[:, np.newaxis]
             if frames:
                 self._phase = float(
-                    (phase[-1] + 2.0 * np.pi * 35.0 / self.sample_rate) % (2.0 * np.pi)
+                    (phase[-1] + 2.0 * np.pi * 80.0 / self.sample_rate) % (2.0 * np.pi)
                 )
-            return audio * (0.2 + 0.8 * carrier)
+            return np.clip(audio * (0.12 + 0.88 * carrier), -0.9, 0.9)
         if self.effect == "radio":
             clipped = np.clip(audio * 3.0, -1.0, 1.0)
             return np.round(clipped * 16.0) / 16.0

@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Existing GitHub release to attach the RPM to
         required: true
-        default: v0.2.0
+        default: v0.3.0
         type: string
 
 permissions:

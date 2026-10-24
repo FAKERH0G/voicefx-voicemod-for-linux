@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voicemod-for-linux"
-version = "0.1.0"
-description = "An unofficial, independent real-time voice-effects prototype for Fedora"
+version = "0.3.0"
+description = "An unofficial GTK voice changer and soundboard for Fedora"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

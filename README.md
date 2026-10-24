@@ -9,9 +9,10 @@ a port of Voicemod, does not include Voicemod code or assets, and is not
 affiliated with Voicemod or its owners.
 
 VoiceFX provides a native GTK desktop app and a command-line processor for
-real-time microphone effects. It includes clean, robot, radio, and echo effects.
-It is an independent early-stage project, not a feature-complete replacement
-for Voicemod.
+real-time microphone effects. Switch between clean, robot, radio, and echo
+effects while the mic is running, or play WAV clips from the built-in soundboard.
+It is an independent project, not a port or feature-complete replacement for
+Voicemod.
 
 ## Install the Fedora RPM
 
@@ -20,11 +21,11 @@ Install the Fedora 44 RPM from the
 with DNF. DNF will install the app and resolve its dependencies:
 
 ```sh
-sudo dnf install https://github.com/FAKERH0G/voicemod-for-linux/releases/download/v0.2.0/voicemod-for-linux-0.2.0-1.fc44.noarch.rpm
+sudo dnf install https://github.com/FAKERH0G/voicemod-for-linux/releases/download/v0.3.0/voicemod-for-linux-0.3.0-1.fc44.noarch.rpm
 ```
 
 For a locally built RPM, install
-`rpmbuild/RPMS/noarch/voicemod-for-linux-0.2.0-1.fc44.noarch.rpm` instead.
+`rpmbuild/RPMS/noarch/voicemod-for-linux-0.3.0-1.fc44.noarch.rpm` instead.
 
 The RPM adds **VoiceFX** to the application grid and installs the
 `voicemod-for-linux` command-line tool. It uses Fedora's packaged GTK, Python,
@@ -49,6 +50,14 @@ The devices created with `pactl load-module` last until the audio service
 restarts or their modules are unloaded. To remove them, run
 `pactl unload-module MODULE_ID` with each module ID printed by `pactl`.
 
+## Soundboard
+
+Open **Soundboard**, choose **Add WAV sounds**, and select mono or stereo
+uncompressed PCM WAV files (up to five minutes each). Start voice effects, then
+use **Play**, **Stop**, and **Loop** on a sound. Clips are mixed with the
+processed microphone and routed to the selected virtual output. Select
+**VoiceChanger_Microphone** in your call app to hear both.
+
 ## Command line
 
 List audio devices:
@@ -69,15 +78,16 @@ Replace the IDs with those reported on your machine. Effects are `clean`,
 ## Requirements and limitations
 
 - Fedora Linux with PipeWire and its PulseAudio compatibility service.
-- The app provides a GTK desktop UI, but no soundboard, effect editor, or
-  advanced voice models. The icon is original artwork, not Voicemod branding.
+- The soundboard currently supports uncompressed PCM WAV files. The app does
+  not include an effect editor or advanced voice models. Its interface and icon
+  are original project work, not Voicemod branding.
 
 ## Development
 
 ```sh
-sudo dnf install gtk4 pipewire-pulseaudio python3-gobject python3-numpy \
-  python3-sounddevice rpm-build
-python3 -m unittest discover -s tests
+sudo dnf install gtk4 pipewire-pulseaudio python3-devel python3-gobject \
+  python3-numpy python3-sounddevice rpm-build
+PYTHONPATH=src python3 -m unittest discover -s tests
 ./scripts/build-rpm.sh
 ```
 
