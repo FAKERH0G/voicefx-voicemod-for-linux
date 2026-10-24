@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Existing GitHub release to attach the RPM to
         required: true
-        default: v0.4.0
+        default: v0.5.0
         type: string
 
 permissions:
@@ -25,6 +25,9 @@ jobs:
         run: |
           dnf install --assumeyes \
             gh \
+            gstreamer1 \
+            gstreamer1-plugins-bad-free \
+            gstreamer1-plugins-good \
             gtk4 \
             pipewire-pulseaudio \
             python3 \

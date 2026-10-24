@@ -1,5 +1,5 @@
 Name:           voicemod-for-linux
-Version:        0.4.0
+Version:        0.5.0
 Release:        1%{?dist}
 Summary:        Independent real-time voice effects for Fedora
 License:        MIT
@@ -12,10 +12,13 @@ Requires:       python3-gobject
 Requires:       python3-numpy
 Requires:       python3-sounddevice
 Requires:       gtk4
+Requires:       gstreamer1
+Requires:       gstreamer1-plugins-good
+Requires:       gstreamer1-plugins-bad-free
 Requires:       pipewire-pulseaudio
 
 %description
-VoiceFX is an unofficial, independent voice changer and WAV soundboard for
+VoiceFX is an unofficial, independent voice changer and audio soundboard for
 Fedora. It provides a GTK desktop interface and a command-line audio processor
 that can route effects to a PipeWire virtual microphone. It is not affiliated
 with Voicemod or its owners.
@@ -57,5 +60,5 @@ install -Dpm0644 assets/voicefx.svg \
 %{_datadir}/icons/hicolor/scalable/apps/voicefx.svg
 
 %changelog
-* Fri Oct 23 2026 FAKERH0G <236636419+FAKERH0G@users.noreply.github.com> - 0.4.0-1
-- Fix PipeWire virtual microphone routing and add headphone monitoring
+* Fri Oct 23 2026 FAKERH0G <236636419+FAKERH0G@users.noreply.github.com> - 0.5.0-1
+- Route active call-app mic streams and decode common audio formats

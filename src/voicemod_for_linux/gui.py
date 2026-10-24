@@ -9,15 +9,48 @@ import sounddevice as sd
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, GLib, Gtk
+from gi.repository import Gdk, Gio, GLib, Gtk
 
 from .effects import EFFECTS, EffectProcessor
-from .pipewire import PipeWireRouting
-from .soundboard import Soundboard
+from .pipewire import PipeWireRouting, RecordingStream
+from .soundboard import SUPPORTED_AUDIO_PATTERNS, Soundboard
 
 
 SAMPLE_RATE = 48000
 BLOCK_SIZE = 256
+
+
+def _is_voicefx_output(name: str) -> bool:
+    return name.lower().replace("_", " ").startswith("voicefx output")
+
+
+def _find_voicefx_output(
+    devices: list[tuple[int | None, str]],
+) -> tuple[int, tuple[int | None, str]] | None:
+    return next(
+        (
+            (index, device)
+            for index, device in enumerate(devices)
+            if device[0] is not None and _is_voicefx_output(device[1])
+        ),
+        None,
+    )
+
+
+def _resolve_voicefx_output(
+    devices: list[tuple[int | None, str]], selected_index: int
+) -> tuple[int, tuple[int | None, str]]:
+    if selected_index < len(devices):
+        selected = devices[selected_index]
+        if selected[0] is not None and _is_voicefx_output(selected[1]):
+            return selected_index, selected
+    virtual_output = _find_voicefx_output(devices)
+    if virtual_output is None:
+        raise ValueError(
+            "VoiceFX_Output is unavailable. Make sure PipeWire is running, "
+            "then close and reopen VoiceFX."
+        )
+    return virtual_output
 
 
 class VoiceFxWindow(Gtk.ApplicationWindow):
@@ -28,6 +61,7 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         self._processor: EffectProcessor | None = None
         self._soundboard = Soundboard(sample_rate=SAMPLE_RATE)
         self._routing = PipeWireRouting()
+        self._call_streams: list[RecordingStream] = []
         self._routing_error: str | None = None
         try:
             self._routing.ensure_virtual_microphone()
@@ -99,6 +133,7 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         voice_page_button.connect("toggled", self._show_page, stack, "voice")
         soundboard_page_button.connect("toggled", self._show_page, stack, "soundboard")
         GLib.timeout_add(300, self._update_soundboard_rows)
+        GLib.timeout_add(1500, self._refresh_call_apps)
         self.connect("close-request", self._on_close)
 
     @staticmethod
@@ -197,6 +232,44 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         monitor_note.add_css_class("dim-label")
         page.append(monitor_note)
 
+        call_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        call_title = Gtk.Label(label="Send VoiceFX to an open call")
+        call_title.add_css_class("title-2")
+        call_title.set_xalign(0)
+        call_box.append(call_title)
+        call_description = Gtk.Label(
+            label="Choose Discord or another app with an active microphone stream. "
+            "This routes that stream to VoiceFX even if the app is still set to your physical mic."
+        )
+        call_description.set_xalign(0)
+        call_description.set_wrap(True)
+        call_description.add_css_class("dim-label")
+        call_box.append(call_description)
+        self._call_app_dropdown = Gtk.DropDown.new_from_strings(
+            ["No active microphone streams"]
+        )
+        self._call_app_dropdown.set_sensitive(False)
+        call_box.append(self._call_app_dropdown)
+        call_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self._route_call_button = Gtk.Button(label="Route selected app to VoiceFX")
+        self._route_call_button.connect("clicked", self._route_call_app)
+        self._route_call_button.set_sensitive(False)
+        call_buttons.append(self._route_call_button)
+        self._restore_call_button = Gtk.Button(label="Restore app microphone")
+        self._restore_call_button.connect("clicked", self._restore_call_app)
+        self._restore_call_button.set_sensitive(False)
+        call_buttons.append(self._restore_call_button)
+        call_box.append(call_buttons)
+        self._call_status = Gtk.Label(
+            label="Start voice effects and begin a call to discover its microphone stream."
+        )
+        self._call_status.set_xalign(0)
+        self._call_status.set_wrap(True)
+        self._call_status.add_css_class("caption")
+        self._call_status.add_css_class("dim-label")
+        call_box.append(self._call_status)
+        page.append(self._card(call_box))
+
         self._status = Gtk.Label(
             label=self._routing_error
             or "Ready · processed audio routes to VoiceFX Microphone"
@@ -216,17 +289,17 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         page.append(
             self._heading(
                 "Soundboard",
-                "Load WAV clips and play them into the same virtual microphone as your voice.",
+                "Load audio clips and play them into the same virtual microphone as your voice.",
             )
         )
 
         toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        add_button = Gtk.Button(label="Add WAV sounds")
+        add_button = Gtk.Button(label="Browse audio files")
         add_button.add_css_class("suggested-action")
         add_button.connect("clicked", self._choose_sounds)
         toolbar.append(add_button)
         self._soundboard_status = Gtk.Label(
-            label="Supports mono or stereo PCM WAV files."
+            label="WAV, MP3, Ogg, Opus, FLAC, AAC, and other installed GStreamer formats."
         )
         self._soundboard_status.set_xalign(0)
         self._soundboard_status.add_css_class("dim-label")
@@ -260,10 +333,9 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
     ) -> Gtk.DropDown:
         dropdown = Gtk.DropDown.new_from_strings([name for _, name in devices])
         if default_index == 1:
-            for index, (_, name) in enumerate(devices):
-                if "voicefx_output" in name.lower() or "voicefx output" in name.lower():
-                    dropdown.set_selected(index)
-                    break
+            virtual_output = _find_voicefx_output(devices)
+            if virtual_output is not None:
+                dropdown.set_selected(virtual_output[0])
         if sd.default.device is not None:
             default_id = sd.default.device[default_index]
             for index, (device_id, _) in enumerate(devices):
@@ -307,16 +379,21 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
 
         try:
             input_device = self._selected_device(self._input_dropdown, self._inputs)
-            output_device = self._selected_device(self._output_dropdown, self._outputs)
+            output_index, output_entry = _resolve_voicefx_output(
+                self._outputs, self._output_dropdown.get_selected()
+            )
+            self._output_dropdown.set_selected(output_index)
+            output_device = output_entry[0]
             input_settings = sd.query_devices(input_device, "input")
             output_settings = sd.query_devices(output_device, "output")
             if input_settings["max_input_channels"] < 1:
                 raise ValueError("The selected microphone does not provide an input channel.")
             if output_settings["max_output_channels"] < 1:
                 raise ValueError("The selected output device does not accept audio.")
-            if output_device is None or "voicefx" not in str(output_settings["name"]).lower():
+            if not _is_voicefx_output(str(output_settings["name"])):
                 raise ValueError(
-                    "Select the VoiceFX_Output virtual device so your calling app can receive the processed mic."
+                    "PortAudio could not open VoiceFX_Output. Check that PipeWire is running "
+                    "and restart VoiceFX."
                 )
             output_channels = min(2, int(output_settings["max_output_channels"]))
             effect = next(
@@ -355,6 +432,11 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         self._processor = processor
         self._stream = stream
         self._start_button.set_label("Stop voice effects")
+        default_source_error = None
+        try:
+            self._routing.set_default_source()
+        except RuntimeError as error:
+            default_source_error = str(error)
         monitor_error = None
         if self._monitor_toggle.get_active():
             try:
@@ -363,8 +445,85 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
                 monitor_error = str(error)
                 self._monitor_toggle.set_active(False)
         self._status.set_text(f"Running {effect} effect · select VoiceFX_Microphone in your call app.")
+        if default_source_error:
+            self._status.set_text(
+                f"Voice changer is running, but the default mic could not be switched: {default_source_error}"
+            )
         if monitor_error:
             self._status.set_text(f"Voice changer is running; headphone monitoring failed: {monitor_error}")
+
+    def _refresh_call_apps(self) -> bool:
+        try:
+            streams = self._routing.recording_streams()
+        except RuntimeError as error:
+            self._call_status.set_text(f"Could not inspect active microphone streams: {error}")
+            return True
+        selected = self._call_app_dropdown.get_selected()
+        self._call_streams = streams
+        labels = [
+            f"{stream.name} · {stream.source}" for stream in streams
+        ] or ["No active microphone streams"]
+        model = Gtk.StringList.new(labels)
+        self._call_app_dropdown.set_model(model)
+        if streams:
+            self._call_app_dropdown.set_selected(min(selected, len(streams) - 1))
+            self._call_app_dropdown.set_sensitive(True)
+            self._route_call_button.set_sensitive(self._stream is not None)
+            self._restore_call_button.set_sensitive(
+                any(self._routing.is_stream_routed(stream.index) for stream in streams)
+            )
+            routed = [
+                stream.name
+                for stream in streams
+                if self._routing.is_stream_routed(stream.index)
+                or stream.source == "voicefx_mic"
+            ]
+            self._call_status.set_text(
+                f"Routed: {', '.join(routed)}"
+                if routed
+                else "No call app routed yet. Start its microphone, then select it above."
+            )
+        else:
+            self._call_app_dropdown.set_sensitive(False)
+            self._call_app_dropdown.set_selected(0)
+            self._route_call_button.set_sensitive(False)
+            self._restore_call_button.set_sensitive(False)
+            self._call_status.set_text(
+                "No active microphone streams. Start a Discord call or enable its mic to show it here."
+            )
+        return True
+
+    def _selected_call_stream(self) -> RecordingStream:
+        selected = self._call_app_dropdown.get_selected()
+        if selected >= len(self._call_streams):
+            raise ValueError("Select an active call-app microphone stream.")
+        return self._call_streams[selected]
+
+    def _route_call_app(self, _button: Gtk.Button) -> None:
+        if self._stream is None:
+            self._call_status.set_text("Start voice effects before routing a call app.")
+            return
+        try:
+            stream = self._selected_call_stream()
+            self._routing.route_recording_stream(stream.index)
+        except (RuntimeError, ValueError) as error:
+            self._call_status.set_text(f"Could not route the selected app: {error}")
+            return
+        self._refresh_call_apps()
+        self._call_status.set_text(
+            f"{stream.name} now receives VoiceFX. Select Default or VoiceFX_Microphone in Discord if needed."
+        )
+        self._restore_call_button.set_sensitive(True)
+
+    def _restore_call_app(self, _button: Gtk.Button) -> None:
+        try:
+            stream = self._selected_call_stream()
+            self._routing.restore_recording_stream(stream.index)
+        except (RuntimeError, ValueError) as error:
+            self._call_status.set_text(f"Could not restore the app microphone: {error}")
+            return
+        self._refresh_call_apps()
+        self._call_status.set_text(f"Restored {stream.name}'s original microphone.")
 
     def _toggle_monitor(self, button: Gtk.CheckButton) -> None:
         if self._stream is None:
@@ -385,53 +544,82 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         if stream is not None:
             self._stream = None
             self._processor = None
+            errors: list[str] = []
             try:
                 stream.stop()
+            except (sd.PortAudioError, RuntimeError) as error:
+                errors.append(f"Could not stop audio: {error}")
             finally:
-                stream.close()
+                try:
+                    stream.close()
+                except (sd.PortAudioError, RuntimeError) as error:
+                    errors.append(f"Could not close audio: {error}")
+            errors.extend(self._routing.restore_recording_streams())
+            for cleanup, description in (
+                (self._routing.restore_default_source, "default microphone"),
+                (self._routing.stop_monitor, "headphone monitoring"),
+            ):
+                try:
+                    cleanup()
+                except RuntimeError as error:
+                    errors.append(f"Could not restore {description}: {error}")
             self._start_button.set_label("Start voice effects")
-            self._status.set_text("Stopped")
+            self._status.set_text(
+                f"Stopped · {'; '.join(errors)}" if errors else "Stopped"
+            )
+            self._refresh_call_apps()
 
     def _choose_sounds(self, _button: Gtk.Button) -> None:
-        chooser = Gtk.FileChooserNative(
-            title="Add soundboard WAV files",
-            parent=self,
-            action=Gtk.FileChooserAction.OPEN,
-            accept_label="_Add",
-            cancel_label="_Cancel",
-        )
-        chooser.set_select_multiple(True)
-        file_filter = Gtk.FileFilter()
-        file_filter.set_name("WAV audio")
-        file_filter.add_mime_type("audio/wav")
-        file_filter.add_pattern("*.wav")
-        file_filter.add_pattern("*.WAV")
-        chooser.add_filter(file_filter)
-        chooser.connect("response", self._on_files_chosen)
-        chooser.show()
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Add soundboard audio")
 
-    def _on_files_chosen(self, chooser: Gtk.FileChooserNative, response: int) -> None:
-        if response == Gtk.ResponseType.ACCEPT:
-            files = chooser.get_files()
-            errors: list[str] = []
-            for index in range(files.get_n_items()):
-                file = files.get_item(index)
-                path = file.get_path()
-                if path is None:
-                    errors.append("Could not read a local sound file.")
-                    continue
-                try:
-                    self._soundboard.add_file(path)
-                except ValueError as error:
-                    errors.append(f"{Path(path).name}: {error}")
-            self._refresh_sound_rows()
-            if errors:
-                self._soundboard_status.set_text(" · ".join(errors))
-            elif files.get_n_items():
-                self._soundboard_status.set_text(
-                    f"Loaded {files.get_n_items()} WAV sound(s). Start voice effects to play them into calls."
-                )
-        chooser.destroy()
+        audio_filter = Gtk.FileFilter()
+        audio_filter.set_name("Supported audio files")
+        audio_filter.add_mime_type("audio/*")
+        for pattern in SUPPORTED_AUDIO_PATTERNS:
+            audio_filter.add_pattern(pattern)
+
+        all_files_filter = Gtk.FileFilter()
+        all_files_filter.set_name("All files")
+        all_files_filter.add_pattern("*")
+
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(audio_filter)
+        filters.append(all_files_filter)
+        dialog.set_filters(filters)
+        dialog.set_default_filter(audio_filter)
+        dialog.open_multiple(self, None, self._on_files_chosen)
+
+    def _on_files_chosen(self, dialog: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
+        try:
+            files = dialog.open_multiple_finish(result)
+        except GLib.Error as error:
+            if error.matches(Gio.io_error_quark(), Gio.IOErrorEnum.CANCELLED):
+                return
+            self._soundboard_status.set_text(f"Could not open the audio file picker: {error}")
+            return
+
+        loaded = 0
+        errors: list[str] = []
+        for index in range(files.get_n_items()):
+            file = files.get_item(index)
+            path = file.get_path()
+            if path is None:
+                errors.append("Could not read a local audio file.")
+                continue
+            try:
+                self._soundboard.add_file(path)
+                loaded += 1
+            except ValueError as error:
+                errors.append(f"{Path(path).name}: {error}")
+        self._refresh_sound_rows()
+        messages = []
+        if loaded:
+            messages.append(f"Loaded {loaded} audio file(s).")
+        messages.extend(errors)
+        self._soundboard_status.set_text(
+            " ".join(messages) or "No audio files were selected."
+        )
 
     def _refresh_sound_rows(self) -> None:
         if self._sound_rows is None:
@@ -517,6 +705,29 @@ def main() -> int:
                 background: #050a14;
                 color: #eff6ff;
             }
+            .voicefx-window button,
+            .voicefx-window frame,
+            .voicefx-window dropdown,
+            .voicefx-window entry,
+            .voicefx-window popover,
+            .voicefx-window checkbutton,
+            .voicefx-window switch {
+                border-radius: 0;
+            }
+            .voicefx-window button {
+                background-color: #102448;
+                border: 1px solid #164a91;
+                color: #eff6ff;
+            }
+            .voicefx-window button:hover {
+                background-color: #164a91;
+            }
+            .voicefx-window button.suggested-action,
+            .voicefx-window button.suggested-action:hover {
+                background-color: #0878e8;
+                border-color: #1688ff;
+                color: white;
+            }
             .voicefx-sidebar {
                 background: #080f1e;
                 border-right: 1px solid #123264;
@@ -524,12 +735,12 @@ def main() -> int:
             .voicefx-card {
                 background: #0b1730;
                 border: 1px solid #164a91;
-                border-radius: 16px;
+                border-radius: 0;
             }
             .voicefx-nav {
                 min-height: 40px;
                 padding: 8px 12px;
-                border-radius: 10px;
+                border-radius: 0;
                 background: transparent;
             }
             .voicefx-nav:checked {
@@ -538,7 +749,7 @@ def main() -> int:
             }
             .voicefx-effect {
                 min-height: 64px;
-                border-radius: 12px;
+                border-radius: 0;
                 background: #102448;
             }
             .voicefx-effect:checked {
@@ -550,7 +761,7 @@ def main() -> int:
         display = Gdk.Display.get_default()
         if display is not None:
             Gtk.StyleContext.add_provider_for_display(
-                display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+                display, provider, Gtk.STYLE_PROVIDER_PRIORITY_USER
             )
         VoiceFxWindow(application).present()
 

@@ -3,9 +3,13 @@ import unittest
 import wave
 from pathlib import Path
 
+import gi
 import numpy as np
 
-from voicemod_for_linux.soundboard import Soundboard, load_wav
+gi.require_version("Gst", "1.0")
+from gi.repository import Gst
+
+from voicemod_for_linux.soundboard import Soundboard, load_audio, load_wav
 
 
 def write_wav(path: Path, samples: np.ndarray, sample_rate: int, channels: int) -> None:
@@ -68,6 +72,37 @@ class SoundboardTests(unittest.TestCase):
             path.write_text("not audio")
             with self.assertRaises(ValueError):
                 load_wav(path, sample_rate=48000)
+
+    def test_encoded_audio_requires_a_positive_sample_rate(self):
+        with self.assertRaisesRegex(ValueError, "Sample rate must be positive"):
+            load_audio("tone.mp3", sample_rate=0)
+
+    def test_load_audio_decodes_ogg_to_requested_sample_rate(self):
+        Gst.init(None)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "tone.ogg"
+            pipeline = Gst.parse_launch(
+                f'audiotestsrc num-buffers=5 samplesperbuffer=480 wave=sine '
+                f'! audio/x-raw,rate=48000,channels=1 ! audioconvert '
+                f'! vorbisenc ! oggmux ! filesink location="{path}"'
+            )
+            try:
+                self.assertNotEqual(
+                    pipeline.set_state(Gst.State.PLAYING), Gst.StateChangeReturn.FAILURE
+                )
+                message = pipeline.get_bus().timed_pop_filtered(
+                    10 * Gst.SECOND,
+                    Gst.MessageType.ERROR | Gst.MessageType.EOS,
+                )
+                self.assertIsNotNone(message, "GStreamer encoder did not finish")
+                self.assertEqual(message.type, Gst.MessageType.EOS)
+            finally:
+                pipeline.set_state(Gst.State.NULL)
+
+            audio = load_audio(path, sample_rate=24000)
+        self.assertEqual(audio.shape[1], 1)
+        self.assertIn(audio.shape[0], range(1200, 1202))
+        self.assertGreater(float(np.max(np.abs(audio))), 0.01)
 
 
 if __name__ == "__main__":

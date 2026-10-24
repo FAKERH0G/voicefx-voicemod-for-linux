@@ -9,6 +9,94 @@ import numpy as np
 
 
 MAX_CLIP_SECONDS = 300
+SUPPORTED_AUDIO_PATTERNS = (
+    "*.wav",
+    "*.wave",
+    "*.mp3",
+    "*.ogg",
+    "*.oga",
+    "*.opus",
+    "*.flac",
+    "*.m4a",
+    "*.aac",
+    "*.aiff",
+    "*.aif",
+    "*.wma",
+    "*.webm",
+)
+
+
+def _load_gstreamer(path: Path, sample_rate: int) -> np.ndarray:
+    try:
+        import gi
+
+        gi.require_version("Gst", "1.0")
+        from gi.repository import GLib, Gst
+    except (ImportError, ValueError) as error:
+        raise ValueError(
+            "GStreamer audio decoding is unavailable. Install gstreamer1 and "
+            "gstreamer1-plugins-good."
+        ) from error
+
+    Gst.init(None)
+    uri = GLib.filename_to_uri(str(path.resolve()), None)
+    description = (
+        f'uridecodebin uri="{uri}" ! audioconvert ! audioresample ! '
+        f'audio/x-raw,format=F32LE,layout=interleaved,channels=1,rate={sample_rate} ! '
+        "appsink name=voicefx_decoder sync=false max-buffers=8"
+    )
+    try:
+        pipeline = Gst.parse_launch(description)
+    except GLib.Error as error:
+        raise ValueError(f"Could not create an audio decoder for {path.name}: {error}") from error
+
+    sink = pipeline.get_by_name("voicefx_decoder")
+    if sink is None:
+        pipeline.set_state(Gst.State.NULL)
+        raise ValueError("GStreamer did not create an audio decoder.")
+
+    chunks: list[np.ndarray] = []
+    frame_count = 0
+    try:
+        state = pipeline.set_state(Gst.State.PLAYING)
+        if state == Gst.StateChangeReturn.FAILURE:
+            raise ValueError(f"Could not open {path.name} with an installed audio decoder.")
+        bus = pipeline.get_bus()
+        while True:
+            sample = sink.emit("try-pull-sample", 100 * Gst.MSECOND)
+            if sample is not None:
+                buffer = sample.get_buffer()
+                success, mapped = buffer.map(Gst.MapFlags.READ)
+                if not success:
+                    raise ValueError(f"Could not read decoded audio from {path.name}.")
+                try:
+                    audio = np.frombuffer(mapped.data, dtype="<f4").copy()
+                finally:
+                    buffer.unmap(mapped)
+                frame_count += audio.size
+                if frame_count > sample_rate * MAX_CLIP_SECONDS:
+                    raise ValueError(
+                        f"Audio files must be {MAX_CLIP_SECONDS // 60} minutes or shorter."
+                    )
+                chunks.append(audio)
+                continue
+
+            message = bus.pop_filtered(Gst.MessageType.ERROR | Gst.MessageType.EOS)
+            if message is None:
+                continue
+            if message.type == Gst.MessageType.EOS:
+                break
+            error, debug = message.parse_error()
+            detail = f": {error.message}" if error.message else ""
+            if debug:
+                detail += f" ({debug})"
+            raise ValueError(f"Could not decode {path.name}{detail}")
+    finally:
+        pipeline.set_state(Gst.State.NULL)
+
+    if not chunks:
+        raise ValueError(f"No audio samples were decoded from {path.name}.")
+    return np.concatenate(chunks).reshape(-1, 1)
 
 
 def load_wav(path: str | Path, sample_rate: int) -> np.ndarray:
@@ -59,6 +147,21 @@ def load_wav(path: str | Path, sample_rate: int) -> np.ndarray:
     return audio
 
 
+def load_audio(path: str | Path, sample_rate: int) -> np.ndarray:
+    if sample_rate <= 0:
+        raise ValueError("Sample rate must be positive")
+    file_path = Path(path).expanduser()
+    if file_path.suffix.lower() == ".wav":
+        try:
+            return load_wav(file_path, sample_rate)
+        except ValueError as wav_error:
+            try:
+                return _load_gstreamer(file_path, sample_rate)
+            except ValueError as decode_error:
+                raise ValueError(f"{wav_error}; {decode_error}") from decode_error
+    return _load_gstreamer(file_path, sample_rate)
+
+
 @dataclass
 class Sound:
     name: str
@@ -82,7 +185,7 @@ class Soundboard:
         file_path = Path(path).expanduser()
         if not file_path.is_file():
             raise ValueError(f"Sound file does not exist: {file_path}")
-        audio = load_wav(file_path, self.sample_rate)
+        audio = load_audio(file_path, self.sample_rate)
         base_name = file_path.stem or file_path.name
         with self._lock:
             name = base_name
