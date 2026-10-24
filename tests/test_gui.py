@@ -1,7 +1,11 @@
 import unittest
 from unittest.mock import patch
 
-from voicemod_for_linux.gui import _resolve_input_device, _resolve_voicefx_output
+from voicemod_for_linux.gui import (
+    _is_physical_input_name,
+    _resolve_input_device,
+    _resolve_voicefx_output,
+)
 
 
 class VoiceFxOutputSelectionTests(unittest.TestCase):
@@ -73,6 +77,31 @@ class VoiceFxOutputSelectionTests(unittest.TestCase):
 
         query.side_effect = query_device
         self.assertEqual(_resolve_input_device(None, 3), 1)
+
+    def test_virtual_and_monitor_sources_are_not_physical_microphones(self):
+        self.assertFalse(_is_physical_input_name("VoiceFX_Microphone"))
+        self.assertFalse(_is_physical_input_name("USB Microphone Monitor"))
+        self.assertFalse(_is_physical_input_name("alsa_output.monitor"))
+        self.assertTrue(_is_physical_input_name("USB Microphone Mono"))
+
+    @patch("voicemod_for_linux.gui.sd.query_devices")
+    def test_selected_voicefx_source_is_replaced_with_physical_mic(self, query):
+        devices = [
+            {"name": "USB Microphone Mono", "hostapi": 2, "max_input_channels": 1},
+            {"name": "VoiceFX_Microphone", "hostapi": 2, "max_input_channels": 2},
+        ]
+
+        def query_device(device=None, kind=None):
+            if device is None:
+                return devices
+            if device == 1 and kind == "input":
+                return devices[1]
+            if device == 3 and kind == "output":
+                return {"name": "VoiceFX_Output", "hostapi": 2, "max_output_channels": 2}
+            raise AssertionError((device, kind))
+
+        query.side_effect = query_device
+        self.assertEqual(_resolve_input_device(1, 3), 0)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 Name:           voicemod-for-linux
-Version:        0.6.0
+Version:        0.7.0
 Release:        1%{?dist}
 Summary:        Independent real-time voice effects for Fedora
 License:        MIT
@@ -12,6 +12,7 @@ Requires:       python3-gobject
 Requires:       python3-numpy
 Requires:       python3-sounddevice
 Requires:       portaudio
+Requires:       libayatana-appindicator-gtk3
 Requires:       gtk4
 Requires:       gstreamer1
 Requires:       gstreamer1-plugins-good
@@ -43,6 +44,8 @@ install -pm0644 src/voicemod_for_linux/pipewire.py \
     %{buildroot}%{python3_sitelib}/voicemod_for_linux/pipewire.py
 install -pm0644 src/voicemod_for_linux/soundboard.py \
     %{buildroot}%{python3_sitelib}/voicemod_for_linux/soundboard.py
+install -pm0644 src/voicemod_for_linux/tray.py \
+    %{buildroot}%{python3_sitelib}/voicemod_for_linux/tray.py
 install -Dpm0755 packaging/voicefx-app %{buildroot}%{_bindir}/voicefx-app
 install -Dpm0755 packaging/voicemod-for-linux \
     %{buildroot}%{_bindir}/voicemod-for-linux
@@ -61,6 +64,8 @@ install -Dpm0644 assets/voicefx.svg \
 %{_datadir}/icons/hicolor/scalable/apps/voicefx.svg
 
 %changelog
+* Fri Oct 23 2026 FAKERH0G <236636419+FAKERH0G@users.noreply.github.com> - 0.7.0-1
+- Add tray menu and avoid routing virtual monitor devices as microphone input
 * Fri Oct 23 2026 FAKERH0G <236636419+FAKERH0G@users.noreply.github.com> - 0.6.0-1
 - Fix microphone and output backend selection and allow background operation
 * Fri Oct 23 2026 FAKERH0G <236636419+FAKERH0G@users.noreply.github.com> - 0.5.0-1

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -60,9 +61,12 @@ def _resolve_input_device(input_device: int | None, output_device: int) -> int:
 
     if input_device is not None:
         selected = sd.query_devices(input_device, "input")
-        if int(selected["hostapi"]) == output_hostapi:
-            return input_device
         selected_name = str(selected["name"]).lower()
+        if (
+            int(selected["hostapi"]) == output_hostapi
+            and _is_physical_input_name(selected_name)
+        ):
+            return input_device
     else:
         selected_name = ""
 
@@ -71,10 +75,7 @@ def _resolve_input_device(input_device: int | None, output_device: int) -> int:
         for index, device in enumerate(devices)
         if device["max_input_channels"] > 0
         and int(device["hostapi"]) == output_hostapi
-        and not any(
-            marker in str(device["name"]).lower()
-            for marker in ("voicefx", ".monitor", "loopback", "monitor")
-        )
+        and _is_physical_input_name(str(device["name"]).lower())
     ]
     if not compatible:
         raise ValueError(
@@ -106,6 +107,14 @@ def _resolve_input_device(input_device: int | None, output_device: int) -> int:
     return compatible[0][0]
 
 
+def _is_physical_input_name(name: str) -> bool:
+    name = name.lower()
+    return not any(
+        marker in name
+        for marker in ("voicefx", ".monitor", "loopback", "monitor")
+    )
+
+
 class VoiceFxWindow(Gtk.ApplicationWindow):
     def __init__(self, application: Gtk.Application) -> None:
         super().__init__(application=application, title="VoiceFX")
@@ -127,6 +136,7 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         self._sound_states: tuple[tuple[str, bool, bool], ...] = ()
         self._quitting = False
         self._cleaned_up = False
+        self._tray_process: subprocess.Popen | None = None
 
         shell = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         shell.add_css_class("voicefx-window")
@@ -181,6 +191,9 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         menu_button.add_css_class("voicefx-nav")
         menu = Gtk.Popover()
         menu_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        open_button = Gtk.Button(label="Open VoiceFX")
+        open_button.connect("clicked", self._show_window)
+        menu_content.append(open_button)
         quit_button = Gtk.Button(label="Quit VoiceFX")
         quit_button.connect("clicked", self._quit_app)
         menu_content.append(quit_button)
@@ -209,6 +222,10 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
             (index, str(device["name"]))
             for index, device in enumerate(sd.query_devices())
             if device[channel_field] > 0
+            and (
+                channel_field != "max_input_channels"
+                or _is_physical_input_name(str(device["name"]).lower())
+            )
         )
         return devices
 
@@ -782,7 +799,10 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         self._cleanup()
         return False
 
-    def _quit_app(self, _button: Gtk.Button) -> None:
+    def _show_window(self, _button: Gtk.Button | None = None) -> None:
+        self.present()
+
+    def _quit_app(self, _button: Gtk.Button | None = None) -> None:
         self._quitting = True
         self.close()
         application = self.get_application()
@@ -793,6 +813,7 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         if self._cleaned_up:
             return
         self._cleaned_up = True
+        self._stop_tray()
         self._stop_stream()
         errors = self._routing.close()
         if errors:
@@ -800,6 +821,32 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
                 f"Could not clean up PipeWire routing: {'; '.join(errors)}",
                 file=sys.stderr,
             )
+
+    def _start_tray(self) -> None:
+        if self._tray_process is not None:
+            return
+        try:
+            self._tray_process = subprocess.Popen(
+                [sys.executable, "-m", "voicemod_for_linux.tray"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=None,
+                start_new_session=True,
+            )
+        except OSError as error:
+            self._status.set_text(f"Could not start the tray icon: {error}")
+
+    def _stop_tray(self) -> None:
+        process = self._tray_process
+        self._tray_process = None
+        if process is None or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
 
 
 def main() -> int:
@@ -873,8 +920,32 @@ def main() -> int:
         if windows:
             windows[0].present()
             return
-        VoiceFxWindow(application).present()
+        window = VoiceFxWindow(application)
+        window.present()
+        window._start_tray()
 
     application = Gtk.Application(application_id="io.github.fakerh0g.VoiceFX")
+
+    def show_window(_action: Gio.SimpleAction, _parameter: Gio.Variant | None) -> None:
+        for window in application.get_windows():
+            if isinstance(window, VoiceFxWindow):
+                window.present()
+                break
+
+    def quit_application(
+        _action: Gio.SimpleAction, _parameter: Gio.Variant | None
+    ) -> None:
+        for window in application.get_windows():
+            if isinstance(window, VoiceFxWindow):
+                window._quit_app()
+                return
+        application.quit()
+
+    show_action = Gio.SimpleAction.new("show", None)
+    show_action.connect("activate", show_window)
+    quit_action = Gio.SimpleAction.new("quit", None)
+    quit_action.connect("activate", quit_application)
+    application.add_action(show_action)
+    application.add_action(quit_action)
     application.connect("activate", activate)
     return application.run(None)

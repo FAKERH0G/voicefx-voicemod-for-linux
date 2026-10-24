@@ -21,7 +21,7 @@ Install the currently published Fedora 44 RPM from the
 with DNF. DNF will install the app and resolve its dependencies:
 
 ```sh
-sudo dnf install https://github.com/FAKERH0G/voicemod-for-linux/releases/download/v0.6.0/voicemod-for-linux-0.6.0-1.fc44.noarch.rpm
+sudo dnf install https://github.com/FAKERH0G/voicemod-for-linux/releases/download/v0.7.0/voicemod-for-linux-0.7.0-1.fc44.noarch.rpm
 ```
 
 To try the unreleased changes in this source tree, build the RPM using the
@@ -51,8 +51,12 @@ when you stop the effects.
 
 Closing the VoiceFX window hides it while audio processing continues in the
 background. Launch VoiceFX again from the application grid to reopen it. Use
-the menu button in the title bar and choose **Quit VoiceFX** to stop the
-background app and clean up its audio routing.
+the VoiceFX tray icon's **Open VoiceFX** option to show the window again, or
+choose **Quit VoiceFX** to stop the background app and clean up its audio
+routing. The system tray must support Ayatana/AppIndicator icons.
+
+Use headphones during calls. If speakers are used, the microphone can
+acoustically pick up call audio and send it back to other participants.
 
 ## Soundboard
 
@@ -91,7 +95,7 @@ Replace the IDs with those reported on your machine. Effects are `clean`,
 
 ```sh
 sudo dnf install gtk4 pipewire-pulseaudio python3-devel python3-gobject \
-  python3-numpy python3-sounddevice gstreamer1 \
+  python3-numpy python3-sounddevice libayatana-appindicator-gtk3 gstreamer1 \
   gstreamer1-plugins-good gstreamer1-plugins-bad-free rpm-build
 PYTHONPATH=src python3 -m unittest discover -s tests
 ./scripts/build-rpm.sh

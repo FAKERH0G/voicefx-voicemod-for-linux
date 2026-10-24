@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Existing GitHub release to attach the RPM to
         required: true
-        default: v0.6.0
+        default: v0.7.0
         type: string
 
 permissions:
@@ -29,6 +29,7 @@ jobs:
             gstreamer1-plugins-bad-free \
             gstreamer1-plugins-good \
             gtk4 \
+            libayatana-appindicator-gtk3 \
             pipewire-pulseaudio \
             portaudio \
             python3 \
@@ -39,6 +40,8 @@ jobs:
             rpm-build
       - name: Run tests
         run: PYTHONPATH=src python3 -m unittest discover -s tests
+      - name: Check tray indicator bindings
+        run: PYTHONPATH=src python3 -c "import voicemod_for_linux.tray"
       - name: Build RPM
         run: ./scripts/build-rpm.sh
       - name: Publish GitHub release
