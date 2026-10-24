@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=VoiceFX
+Comment=Apply real-time voice effects
+Exec=voicemod-for-linux --effect robot
+Icon=voicefx
+Terminal=true
+Categories=AudioVideo;Audio;

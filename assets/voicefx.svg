@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">VoiceFX</title>
+  <desc id="desc">A microphone surrounded by a bright audio waveform on a dark background.</desc>
+  <defs>
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9b8cff"/>
+      <stop offset="1" stop-color="#49d8bd"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="60" fill="#17182d"/>
+  <path d="M44 130h25l13-34 20 66 20-91 20 111 18-52 12 21h40" fill="none" stroke="url(#wave)" stroke-linecap="round" stroke-linejoin="round" stroke-width="10"/>
+  <rect x="110" y="48" width="36" height="90" rx="18" fill="#f4f2ff"/>
+  <path d="M94 112v8a34 34 0 0 0 68 0v-8" fill="none" stroke="#f4f2ff" stroke-linecap="round" stroke-width="9"/>
+  <path d="M128 154v18m-22 0h44" fill="none" stroke="#f4f2ff" stroke-linecap="round" stroke-width="9"/>
+</svg>
