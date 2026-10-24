@@ -1,7 +1,7 @@
 # VoiceFX — Voicemod for Linux
 
 <p align="center">
-  <img src="assets/voicefx.svg" alt="VoiceFX app icon" width="160">
+  <img src="assets/voicefx.svg" alt="VoiceFX app icon" width="220">
 </p>
 
 An unofficial, independent voice-effects prototype for Fedora Linux. It is not
