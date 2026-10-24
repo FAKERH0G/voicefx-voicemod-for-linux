@@ -21,11 +21,11 @@ Install the Fedora 44 RPM from the
 with DNF. DNF will install the app and resolve its dependencies:
 
 ```sh
-sudo dnf install https://github.com/FAKERH0G/voicemod-for-linux/releases/download/v0.3.0/voicemod-for-linux-0.3.0-1.fc44.noarch.rpm
+sudo dnf install https://github.com/FAKERH0G/voicemod-for-linux/releases/download/v0.4.0/voicemod-for-linux-0.4.0-1.fc44.noarch.rpm
 ```
 
 For a locally built RPM, install
-`rpmbuild/RPMS/noarch/voicemod-for-linux-0.3.0-1.fc44.noarch.rpm` instead.
+`rpmbuild/RPMS/noarch/voicemod-for-linux-0.4.0-1.fc44.noarch.rpm` instead.
 
 The RPM adds **VoiceFX** to the application grid and installs the
 `voicemod-for-linux` command-line tool. It uses Fedora's packaged GTK, Python,
@@ -33,22 +33,15 @@ NumPy, and PortAudio bindings rather than bundling Python dependencies.
 
 ## Create a virtual microphone
 
-VoiceFX processes audio from the selected microphone to the selected output.
-To make the processed signal available as a microphone to Discord and other
-apps, create PipeWire virtual devices for the current login:
+VoiceFX creates its own PipeWire virtual output and microphone while it is
+running. Select your physical mic and **VoiceFX_Output**, choose an effect,
+then click **Start voice effects**. In Discord or another calling app, select
+**VoiceFX_Microphone** as its input device.
 
-```sh
-pactl load-module module-null-sink sink_name=voicechanger_out sink_properties=device.description=VoiceChanger_Output
-pactl load-module module-remap-source source_name=voicechanger_mic master=voicechanger_out.monitor source_properties=device.description=VoiceChanger_Microphone
-```
-
-Start **VoiceFX**, select your physical microphone and **VoiceChanger_Output**,
-choose an effect, and click **Start voice effects**. In Discord or another
-calling app, select **VoiceChanger_Microphone** as its input device.
-
-The devices created with `pactl load-module` last until the audio service
-restarts or their modules are unloaded. To remove them, run
-`pactl unload-module MODULE_ID` with each module ID printed by `pactl`.
+**Hear processed audio:** Keep **Hear processed voice in my headphones**
+enabled and use headphones to monitor your voice. The app routes the virtual
+output to your default system audio output. Headphones help prevent microphone
+feedback. VoiceFX removes the PipeWire devices when it exits.
 
 ## Soundboard
 

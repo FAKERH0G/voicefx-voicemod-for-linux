@@ -12,6 +12,7 @@ gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, GLib, Gtk
 
 from .effects import EFFECTS, EffectProcessor
+from .pipewire import PipeWireRouting
 from .soundboard import Soundboard
 
 
@@ -26,6 +27,12 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         self._stream: sd.Stream | None = None
         self._processor: EffectProcessor | None = None
         self._soundboard = Soundboard(sample_rate=SAMPLE_RATE)
+        self._routing = PipeWireRouting()
+        self._routing_error: str | None = None
+        try:
+            self._routing.ensure_virtual_microphone()
+        except RuntimeError as error:
+            self._routing_error = str(error)
         self._inputs = self._devices("max_input_channels")
         self._outputs = self._devices("max_output_channels")
         self._effect_buttons: dict[str, Gtk.ToggleButton] = {}
@@ -178,7 +185,22 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         self._start_button.connect("clicked", self._toggle_stream)
         page.append(self._start_button)
 
-        self._status = Gtk.Label(label="Ready · select a virtual output to send audio to calls")
+        self._monitor_toggle = Gtk.CheckButton(label="Hear processed voice in my headphones")
+        self._monitor_toggle.set_active(True)
+        self._monitor_toggle.connect("toggled", self._toggle_monitor)
+        page.append(self._monitor_toggle)
+        monitor_note = Gtk.Label(
+            label="Headphones recommended while monitoring to prevent microphone feedback."
+        )
+        monitor_note.set_xalign(0)
+        monitor_note.add_css_class("caption")
+        monitor_note.add_css_class("dim-label")
+        page.append(monitor_note)
+
+        self._status = Gtk.Label(
+            label=self._routing_error
+            or "Ready · processed audio routes to VoiceFX Microphone"
+        )
         self._status.set_xalign(0)
         self._status.set_wrap(True)
         self._status.add_css_class("dim-label")
@@ -237,9 +259,16 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         default_index: int,
     ) -> Gtk.DropDown:
         dropdown = Gtk.DropDown.new_from_strings([name for _, name in devices])
+        if default_index == 1:
+            for index, (_, name) in enumerate(devices):
+                if "voicefx_output" in name.lower() or "voicefx output" in name.lower():
+                    dropdown.set_selected(index)
+                    break
         if sd.default.device is not None:
             default_id = sd.default.device[default_index]
             for index, (device_id, _) in enumerate(devices):
+                if default_index == 1 and dropdown.get_selected() != 0:
+                    break
                 if device_id == default_id:
                     dropdown.set_selected(index)
                     break
@@ -285,6 +314,10 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
                 raise ValueError("The selected microphone does not provide an input channel.")
             if output_settings["max_output_channels"] < 1:
                 raise ValueError("The selected output device does not accept audio.")
+            if output_device is None or "voicefx" not in str(output_settings["name"]).lower():
+                raise ValueError(
+                    "Select the VoiceFX_Output virtual device so your calling app can receive the processed mic."
+                )
             output_channels = min(2, int(output_settings["max_output_channels"]))
             effect = next(
                 (
@@ -322,22 +355,42 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
         self._processor = processor
         self._stream = stream
         self._start_button.set_label("Stop voice effects")
-        self._status.set_text(
-            f"Running {effect} effect · choose VoiceChanger_Microphone in your call app."
-        )
+        monitor_error = None
+        if self._monitor_toggle.get_active():
+            try:
+                self._routing.start_monitor()
+            except RuntimeError as error:
+                monitor_error = str(error)
+                self._monitor_toggle.set_active(False)
+        self._status.set_text(f"Running {effect} effect · select VoiceFX_Microphone in your call app.")
+        if monitor_error:
+            self._status.set_text(f"Voice changer is running; headphone monitoring failed: {monitor_error}")
+
+    def _toggle_monitor(self, button: Gtk.CheckButton) -> None:
+        if self._stream is None:
+            return
+        try:
+            if button.get_active():
+                self._routing.start_monitor()
+                self._status.set_text("Headphone monitoring is on. Use headphones to avoid feedback.")
+            else:
+                self._routing.stop_monitor()
+                self._status.set_text("Headphone monitoring is off.")
+        except RuntimeError as error:
+            button.set_active(False)
+            self._status.set_text(f"Could not change headphone monitoring: {error}")
 
     def _stop_stream(self) -> None:
         stream = self._stream
-        if stream is None:
-            return
-        self._stream = None
-        self._processor = None
-        try:
-            stream.stop()
-        finally:
-            stream.close()
-        self._start_button.set_label("Start voice effects")
-        self._status.set_text("Stopped")
+        if stream is not None:
+            self._stream = None
+            self._processor = None
+            try:
+                stream.stop()
+            finally:
+                stream.close()
+            self._start_button.set_label("Start voice effects")
+            self._status.set_text("Stopped")
 
     def _choose_sounds(self, _button: Gtk.Button) -> None:
         chooser = Gtk.FileChooserNative(
@@ -446,6 +499,12 @@ class VoiceFxWindow(Gtk.ApplicationWindow):
 
     def _on_close(self, _window: Gtk.ApplicationWindow) -> bool:
         self._stop_stream()
+        errors = self._routing.close()
+        if errors:
+            print(
+                f"Could not clean up PipeWire routing: {'; '.join(errors)}",
+                file=sys.stderr,
+            )
         return False
 
 
@@ -455,16 +514,16 @@ def main() -> int:
         provider.load_from_data(
             b"""
             .voicefx-window {
-                background: #111119;
-                color: #f4f1fb;
+                background: #050a14;
+                color: #eff6ff;
             }
             .voicefx-sidebar {
-                background: #191821;
-                border-right: 1px solid #302d3b;
+                background: #080f1e;
+                border-right: 1px solid #123264;
             }
             .voicefx-card {
-                background: #1c1a25;
-                border: 1px solid #302d3b;
+                background: #0b1730;
+                border: 1px solid #164a91;
                 border-radius: 16px;
             }
             .voicefx-nav {
@@ -474,16 +533,16 @@ def main() -> int:
                 background: transparent;
             }
             .voicefx-nav:checked {
-                background: #302744;
-                color: #d8c7ff;
+                background: #123d78;
+                color: #c4e2ff;
             }
             .voicefx-effect {
                 min-height: 64px;
                 border-radius: 12px;
-                background: #272431;
+                background: #102448;
             }
             .voicefx-effect:checked {
-                background: #7250dc;
+                background: #0878e8;
                 color: white;
             }
             """
