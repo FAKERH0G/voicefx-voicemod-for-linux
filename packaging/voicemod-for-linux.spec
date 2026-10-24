@@ -3,7 +3,7 @@ Version:        0.7.0
 Release:        1%{?dist}
 Summary:        Independent real-time voice effects for Fedora
 License:        MIT
-URL:            https://github.com/FAKERH0G/voicemod-for-linux
+URL:            https://github.com/FAKERH0G/voicefx-voicemod-for-linux
 Source0:        %{name}-%{version}.tar.gz
 BuildArch:      noarch
 BuildRequires:  python3-devel

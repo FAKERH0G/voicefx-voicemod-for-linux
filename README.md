@@ -17,11 +17,11 @@ replacement for Voicemod.
 ## Install the Fedora RPM
 
 Install the currently published Fedora 44 RPM from the
-[latest release](https://github.com/FAKERH0G/voicemod-for-linux/releases/latest)
+[latest release](https://github.com/FAKERH0G/voicefx-voicemod-for-linux/releases/latest)
 with DNF. DNF will install the app and resolve its dependencies:
 
 ```sh
-sudo dnf install https://github.com/FAKERH0G/voicemod-for-linux/releases/download/v0.7.0/voicemod-for-linux-0.7.0-1.fc44.noarch.rpm
+sudo dnf install https://github.com/FAKERH0G/voicefx-voicemod-for-linux/releases/download/v0.7.0/voicemod-for-linux-0.7.0-1.fc44.noarch.rpm
 ```
 
 To try the unreleased changes in this source tree, build the RPM using the
