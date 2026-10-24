@@ -1,6 +1,8 @@
 # VoiceFX — Voicemod for Linux
 
-![VoiceFX icon](assets/voicefx.svg)
+<p align="center">
+  <img src="assets/voicefx.svg" alt="VoiceFX app icon" width="160">
+</p>
 
 An unofficial, independent voice-effects prototype for Fedora Linux. It is not
 a port of Voicemod, does not include Voicemod code or assets, and is not
@@ -13,14 +15,16 @@ for Voicemod.
 
 ## Install the Fedora RPM
 
-Install the runtime dependencies and the built RPM:
+Install the Fedora 44 RPM from the
+[latest release](https://github.com/FAKERH0G/voicemod-for-linux/releases/latest)
+with DNF. DNF will install the app and resolve its dependencies:
 
 ```sh
-sudo dnf install ./voicemod-for-linux-0.2.0-1.fc44.noarch.rpm
+sudo dnf install https://github.com/FAKERH0G/voicemod-for-linux/releases/download/v0.2.0/voicemod-for-linux-0.2.0-1.fc44.noarch.rpm
 ```
 
-For a local build, the package is at
-`rpmbuild/RPMS/noarch/voicemod-for-linux-0.2.0-1.fc44.noarch.rpm`.
+For a locally built RPM, install
+`rpmbuild/RPMS/noarch/voicemod-for-linux-0.2.0-1.fc44.noarch.rpm` instead.
 
 The RPM adds **VoiceFX** to the application grid and installs the
 `voicemod-for-linux` command-line tool. It uses Fedora's packaged GTK, Python,
